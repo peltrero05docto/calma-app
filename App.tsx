@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, AccessibilitySettings, UserProgress, MoodLog } from './types';
 import { BreathingExercise } from './components/BreathingExercise';
 import { ChatCompanion } from './components/ChatCompanion';
@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [userName, setUserName] = useState(() => localStorage.getItem('calma_name') || '');
   const [dailyQuote, setDailyQuote] = useState("¡Qué onda! Iniciando tu relax...");
   const [showOnboarding, setShowOnboarding] = useState(!localStorage.getItem('calma_name'));
+  const hasFetchedQuote = useRef(false);
   
   const [progress, setProgress] = useState<UserProgress>(() => {
     const saved = localStorage.getItem('calma_progress');
@@ -31,7 +32,13 @@ const App: React.FC = () => {
   const [a11y, setA11y] = useState<AccessibilitySettings>({ highContrast: false, largeText: false });
 
   useEffect(() => {
-    if (userName) getQuickAffirmation("neutral").then(setDailyQuote);
+    // Solo pedimos la frase una vez por sesión para ahorrar cuota de API
+    if (userName && !hasFetchedQuote.current) {
+      getQuickAffirmation("neutral").then(quote => {
+        setDailyQuote(quote);
+        hasFetchedQuote.current = true;
+      });
+    }
   }, [userName]);
 
   useEffect(() => {

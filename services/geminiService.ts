@@ -4,44 +4,97 @@ import { GoogleGenAI, Modality, Type } from "@google/genai";
 export const getAIInstance = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const cleanJSON = (text: string) => {
-  // Limpia bloques de código y caracteres extra que la IA pueda añadir
   return text.replace(/```json/g, "").replace(/```/g, "").replace(/^[^[{]*/, "").replace(/[^\]}]*$/, "").trim();
 };
 
-// Genera un string aleatorio para evitar que la IA repita respuestas por caché de prompt
-const getUniqueContext = () => `[Ref: ${Date.now()}-${Math.random().toString(36).substring(7)}]`;
+const getUniqueContext = () => `[ID: ${Math.random().toString(36).substring(7)}-${Date.now()}]`;
+
+// Función para manejar reintentos automáticos en caso de error 429 (Rate Limit)
+async function callWithRetry(fn: () => Promise<any>, maxRetries = 3, delay = 1000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      if (e.message?.includes('429') && i < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay * (i + 1))); // Espera incremental
+        continue;
+      }
+      throw e;
+    }
+  }
+}
 
 export const getQuickAffirmation = async (mood: string): Promise<string> => {
-  try {
+  return callWithRetry(async () => {
     const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `${getUniqueContext()} Genera una frase de aliento corta y única (max 8 palabras) para un joven que se siente "${mood}". Usa lenguaje juvenil de CDMX.`,
+      contents: `${getUniqueContext()} Genera una frase motivadora ultra-corta (max 6 palabras) para un joven de CDMX. Tono relajado.`,
     });
-    return response.text?.trim() || "¡Tú puedes con todo hoy!";
-  } catch (e) { return "Respira hondo, todo estará bien."; }
+    return response.text?.trim() || "¡A darle con todo hoy!";
+  }).catch(() => "¡Respira, todo va a estar bien!");
 };
 
 export const getSimplifiedExplanation = async (topic: string) => {
-  try {
+  return callWithRetry(async () => {
     const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `${getUniqueContext()} Explica "${topic}" para un joven de 14 años. 
-      Usa exactamente estos marcadores y nada más:
+      Usa ESTRICTAMENTE este formato:
       RESUMEN_MAGICO: (frase corta)
-      EXPLICACION_SIMPLE: (párrafo claro)
-      DETALLE_JOVEN: (con palabras chidas)
-      ANALOGIA: (comparación visual)`,
+      EXPLICACION_SIMPLE: (lo más importante)
+      DETALLE_JOVEN: (lenguaje chido)
+      ANALOGIA: (ejemplo visual)`,
     });
     const text = response.text;
     if (!text) throw new Error("No response");
     return { content: text, isError: false };
-  } catch (e) {
-    return { content: "Error al conectar. Intenta de nuevo.", isError: true };
-  }
+  }).catch((e: any) => {
+    const isRateLimit = e.message?.includes('429');
+    return { 
+      content: isRateLimit ? "AGUANTA... El servidor de Calma está muy solicitado. Intenta en 10 segundos." : "Error al conectar. Intenta de nuevo.", 
+      isError: true 
+    };
+  });
 };
 
+export const getMotivationalQuote = async () => {
+  return callWithRetry(async () => {
+    const ai = getAIInstance();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `${getUniqueContext()} Genera una frase positiva corta y una pista. Responde SOLO JSON: { "quote": "...", "hint": "..." }`,
+      config: { responseMimeType: "application/json", temperature: 1.0 }
+    });
+    return JSON.parse(cleanJSON(response.text || '{"quote": "Cree en ti.", "hint": "Confianza"}'));
+  }).catch(() => ({ quote: "Hoy es un gran día.", hint: "Optimismo" }));
+};
+
+export const getReframingScenario = async () => {
+  return callWithRetry(async () => {
+    const ai = getAIInstance();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `${getUniqueContext()} Un pensamiento negativo escolar aleatorio (max 10 palabras).`,
+    });
+    return response.text?.trim() || "Siento que no puedo con esto.";
+  }).catch(() => "A veces las cosas se ponen difíciles.");
+};
+
+export const evaluateReframing = async (neg: string, pos: string) => {
+  return callWithRetry(async () => {
+    const ai = getAIInstance();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Evalúa este cambio: "${neg}" a "${pos}". Responde JSON: { "score": 0-10, "feedback": "frase corta" }`,
+      config: { responseMimeType: "application/json" }
+    });
+    return JSON.parse(cleanJSON(response.text || '{"score": 5, "feedback": "Bien"}'));
+  }).catch(() => ({ score: 5, feedback: "Interesante punto de vista." }));
+};
+
+// ... resto de funciones existentes ...
 export const createChatSession = () => {
   const ai = getAIInstance();
   return ai.chats.create({
@@ -68,66 +121,25 @@ export const generateSpeech = async (text: string): Promise<string | undefined> 
 };
 
 export const getMoodSupport = async (mood: string, name: string): Promise<string> => {
-  try {
+  return callWithRetry(async () => {
     const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `${getUniqueContext()} El usuario ${name} se siente "${mood}". Dale un apoyo muy corto y cool.`,
     });
     return response.text?.trim() || "Aquí estoy para acompañarte.";
-  } catch (e) { return "Aquí estoy para acompañarte."; }
-};
-
-export const getMotivationalQuote = async () => {
-  try {
-    const ai = getAIInstance();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `${getUniqueContext()} Genera una frase motivadora corta (max 7 palabras) y una pista. Responde SOLO JSON: { "quote": "...", "hint": "..." }`,
-      config: { 
-        responseMimeType: "application/json",
-        temperature: 1.0 
-      }
-    });
-    return JSON.parse(cleanJSON(response.text || '{"quote": "Cree en ti.", "hint": "Confianza"}'));
-  } catch (e) {
-    return { quote: "Hoy es un gran día.", hint: "Optimismo" };
-  }
-};
-
-export const getReframingScenario = async () => {
-  try {
-    const ai = getAIInstance();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `${getUniqueContext()} Un pensamiento negativo escolar aleatorio (max 10 palabras).`,
-      config: { temperature: 0.9 }
-    });
-    return response.text?.trim() || "Siento que no puedo con esto.";
-  } catch (e) { return "Es demasiado difícil."; }
-};
-
-export const evaluateReframing = async (neg: string, pos: string) => {
-  try {
-    const ai = getAIInstance();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Evalúa este cambio: "${neg}" a "${pos}". Responde JSON: { "score": 0-10, "feedback": "frase corta" }`,
-      config: { responseMimeType: "application/json" }
-    });
-    return JSON.parse(cleanJSON(response.text || '{"score": 5, "feedback": "Bien"}'));
-  } catch (e) { return { score: 5, feedback: "Interesante." }; }
+  }).catch(() => "Aquí estoy contigo.");
 };
 
 export const getMathFeedback = async (count: number, difficulty: string) => {
-  try {
+  return callWithRetry(async () => {
     const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Usuario sacó ${count}/5 en mate nivel ${difficulty}. Dile algo muy corto y cool.`,
     });
     return response.text?.trim() || "¡Bien hecho!";
-  } catch (e) { return "¡Vas por buen camino!"; }
+  }).catch(() => "¡Vas por buen camino!");
 };
 
 export const editArtImage = async (base64Data: string, prompt: string): Promise<string | null> => {

@@ -20,7 +20,7 @@ export const MotivationGames: React.FC<Props> = ({ addPoints }) => {
   const [showHint, setShowHint] = useState(false);
   const [scrambledWords, setScrambledWords] = useState<Word[]>([]);
   const [userOrder, setUserOrder] = useState<Word[]>([]);
-  const [gameStatus, setGameStatus] = useState<'playing' | 'won' | 'loading'>('loading');
+  const [gameStatus, setGameStatus] = useState<'playing' | 'won' | 'loading' | 'error'>('loading');
 
   // Reframe Game State
   const [negativeThought, setNegativeThought] = useState('');
@@ -34,13 +34,17 @@ export const MotivationGames: React.FC<Props> = ({ addPoints }) => {
   }, [activeTab]);
 
   const startScrambleGame = async () => {
+    // RESET TOTAL DEL ESTADO PARA EVITAR REPETICIONES VISUALES
     setGameStatus('loading');
+    setTargetQuote('');
     setUserOrder([]);
     setScrambledWords([]);
     setShowHint(false);
     
     try {
       const data = await getMotivationalQuote();
+      if (!data || !data.quote) throw new Error("No data");
+      
       const quote = data.quote;
       const hint = data.hint;
       
@@ -48,26 +52,24 @@ export const MotivationGames: React.FC<Props> = ({ addPoints }) => {
       setTargetHint(hint);
       
       const words = quote.split(/\s+/).filter(w => w.trim().length > 0).map((w, i) => ({ 
-        id: `word-${Date.now()}-${i}`, 
+        id: `word-${Date.now()}-${i}-${Math.random()}`, 
         text: w.trim() 
       }));
       
       setScrambledWords([...words].sort(() => Math.random() - 0.5));
       setGameStatus('playing');
     } catch (e) {
-      setGameStatus('playing');
+      setGameStatus('error');
     }
   };
 
   const handleWordClick = (word: Word) => {
     if (gameStatus !== 'playing') return;
     
-    // Mover palabra del banco al orden del usuario
     const newOrder = [...userOrder, word];
     setUserOrder(newOrder);
     setScrambledWords(prev => prev.filter(w => w.id !== word.id));
 
-    // Verificar si terminó
     if (scrambledWords.length === 1) { 
        const finalSentence = newOrder.map(w => w.text).join(' ');
        const clean = (s: string) => s.toLowerCase().replace(/[.,!¡¿?]/g, '').trim();
@@ -75,8 +77,6 @@ export const MotivationGames: React.FC<Props> = ({ addPoints }) => {
        if (clean(finalSentence) === clean(targetQuote)) {
          setGameStatus('won');
          addPoints(30);
-       } else {
-         // Si falló, le permitimos reiniciar ese mismo reto
        }
     }
   };
@@ -96,18 +96,28 @@ export const MotivationGames: React.FC<Props> = ({ addPoints }) => {
     setReframeResult(null);
     setUserReframe('');
     setNegativeThought('');
-    const scenario = await getReframingScenario();
-    setNegativeThought(scenario);
-    setReframeLoading(false);
+    try {
+      const scenario = await getReframingScenario();
+      setNegativeThought(scenario);
+    } catch (e) {
+      setNegativeThought("No pudimos cargar la situación. Intenta de nuevo.");
+    } finally {
+      setReframeLoading(false);
+    }
   };
 
   const submitReframe = async () => {
     if (!userReframe.trim()) return;
     setReframeLoading(true);
-    const result = await evaluateReframing(negativeThought, userReframe);
-    setReframeResult(result);
-    setReframeLoading(false);
-    if (result.score >= 7) addPoints(result.score * 5);
+    try {
+      const result = await evaluateReframing(negativeThought, userReframe);
+      setReframeResult(result);
+      if (result.score >= 7) addPoints(result.score * 5);
+    } catch (e) {
+      setReframeResult({ score: 0, feedback: "Error de conexión." });
+    } finally {
+      setReframeLoading(false);
+    }
   };
 
   return (
@@ -140,7 +150,12 @@ export const MotivationGames: React.FC<Props> = ({ addPoints }) => {
           {gameStatus === 'loading' ? (
             <div className="flex flex-col items-center justify-center py-12 gap-4">
               <div className="w-12 h-12 border-4 border-calm-200 border-t-calm-600 rounded-full animate-spin"></div>
-              <p className="text-calm-600 font-bold animate-pulse">Buscando nuevo reto...</p>
+              <p className="text-calm-600 font-bold animate-pulse text-center">Buscando un nuevo reto... <br/> <small className="font-normal opacity-50">Si tarda, es que Google está ocupado.</small></p>
+            </div>
+          ) : gameStatus === 'error' ? (
+            <div className="text-center py-12">
+              <p className="text-red-500 font-bold mb-4">¡Ups! Muchas peticiones. Aguanta unos segundos.</p>
+              <button onClick={startScrambleGame} className="bg-calm-600 text-white px-6 py-2 rounded-xl font-bold">Reintentar ahora</button>
             </div>
           ) : (
             <>
@@ -151,7 +166,7 @@ export const MotivationGames: React.FC<Props> = ({ addPoints }) => {
                     Toca las palabras de abajo...
                   </div>
                 )}
-                {userOrder.map((w, idx) => (
+                {userOrder.map((w) => (
                   <span 
                     key={w.id} 
                     className="bg-calm-600 text-white px-5 py-3 rounded-2xl font-black shadow-lg animate-fade-in border-b-4 border-calm-800"
@@ -186,8 +201,8 @@ export const MotivationGames: React.FC<Props> = ({ addPoints }) => {
               </div>
 
               <div className="flex justify-center items-center gap-4">
-                <button onClick={resetScramble} className="bg-gray-100 text-gray-500 px-6 py-3 rounded-2xl font-bold hover:bg-gray-200">Reintentar</button>
-                <button onClick={startScrambleGame} className="bg-nature-500 text-white px-8 py-3 rounded-2xl font-black shadow-lg hover:bg-nature-600 active:scale-95">Siguiente 🚀</button>
+                <button onClick={resetScramble} className="bg-gray-100 text-gray-500 px-6 py-3 rounded-2xl font-bold hover:bg-gray-200">Limpiar Tablero</button>
+                <button onClick={startScrambleGame} className="bg-nature-500 text-white px-8 py-3 rounded-2xl font-black shadow-lg hover:bg-nature-600 active:scale-95">Siguiente Reto 🚀</button>
               </div>
 
               {gameStatus === 'won' && (
