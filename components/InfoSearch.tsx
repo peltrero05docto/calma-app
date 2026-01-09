@@ -25,7 +25,7 @@ export const InfoSearch: React.FC = () => {
         setRawText(response.content);
       }
     } catch (e) {
-      setError("Calma está teniendo problemas para pensar. Intenta con otra pregunta.");
+      setError("Calma no pudo procesar esto. Intenta con algo más simple.");
     } finally {
       setLoading(false);
     }
@@ -35,7 +35,8 @@ export const InfoSearch: React.FC = () => {
     if (speaking || !text) return;
     setSpeaking(true);
     try {
-      const cleanText = text.replace(/[A-Z_]+:/g, '');
+      // Limpiamos los marcadores antes de hablar
+      const cleanText = text.replace(/[A-Z_]+:/gi, '').replace(/\*/g, '');
       const base64 = await generateSpeech(cleanText);
       if (base64) {
         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -49,25 +50,27 @@ export const InfoSearch: React.FC = () => {
     } catch (e) { setSpeaking(false); }
   };
 
-  const getSection = (marker: string) => {
+  // Parser más robusto que ignora mayúsculas/minúsculas y asteriscos de negrita
+  const extractSection = (marker: string) => {
     if (!rawText) return null;
-    const parts = rawText.split(marker);
-    if (parts.length < 2) return null;
-    return parts[1].split(/[A-Z_]+:/)[0].trim();
+    const cleanText = rawText.replace(/\*\*/g, ''); // Quitamos negritas de markdown
+    const regex = new RegExp(`${marker}:?\\s*([\\s\\S]*?)(?=[A-Z_]+:|$)`, 'i');
+    const match = cleanText.match(regex);
+    return match ? match[1].trim() : null;
   };
 
   const sections = {
-    summary: getSection('RESUMEN_MAGICO:'),
-    simple: getSection('EXPLICACION_SIMPLE:'),
-    teen: getSection('DETALLE_JOVEN:'),
-    analogy: getSection('ANALOGIA:')
+    summary: extractSection('RESUMEN_MAGICO'),
+    simple: extractSection('EXPLICACION_SIMPLE'),
+    teen: extractSection('DETALLE_JOVEN'),
+    analogy: extractSection('ANALOGIA')
   };
 
   return (
     <div className="p-4 sm:p-6 max-w-2xl mx-auto animate-fade-in space-y-8 pb-20">
       <div className="text-center space-y-2">
-        <h2 className="text-4xl font-black text-calm-800">Entiende lo que sea 🚀</h2>
-        <p className="text-gray-500 font-medium italic">Calma te explica temas difíciles en segundos.</p>
+        <h2 className="text-4xl font-black text-calm-800">Explícame 🚀</h2>
+        <p className="text-gray-500 font-medium italic">Todo es más fácil cuando Calma te lo cuenta.</p>
       </div>
       
       <form onSubmit={handleSearch} className="relative group">
@@ -76,7 +79,7 @@ export const InfoSearch: React.FC = () => {
           value={query} 
           onChange={(e) => setQuery(e.target.value)} 
           disabled={loading} 
-          placeholder="Ej: ¿Cómo funciona el internet?" 
+          placeholder="Ej: ¿Qué es la inteligencia artificial?" 
           className="w-full p-6 rounded-[2.5rem] border-4 border-white shadow-2xl focus:border-calm-300 outline-none text-lg transition-all" 
         />
         <button 
@@ -89,8 +92,7 @@ export const InfoSearch: React.FC = () => {
       </form>
 
       {error && (
-        <div className="p-8 bg-red-50 border-2 border-dashed border-red-200 rounded-[2.5rem] text-red-600 text-center font-bold animate-shake">
-          <span className="text-3xl block mb-2">😅</span>
+        <div className="p-8 bg-red-50 border-2 border-dashed border-red-200 rounded-[2.5rem] text-red-600 text-center font-bold">
           {error}
         </div>
       )}
@@ -98,11 +100,11 @@ export const InfoSearch: React.FC = () => {
       {rawText && (
         <div className="space-y-6 animate-fade-in pb-10">
           <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-calm-100">
-            <span className="font-black text-calm-600 uppercase text-[10px] tracking-widest ml-2">Análisis de Calma</span>
+            <span className="font-black text-calm-600 uppercase text-[10px] tracking-widest ml-2">Resultado</span>
             <button 
               onClick={() => handleSpeak(rawText)} 
               disabled={speaking} 
-              className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${speaking ? 'bg-nature-100 animate-pulse' : 'bg-calm-100 text-calm-600 hover:scale-110'}`}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md transition-all ${speaking ? 'bg-nature-100 animate-pulse' : 'bg-calm-100 text-calm-600'}`}
             >
               {speaking ? '🔊' : '🔈'}
             </button>
@@ -114,13 +116,13 @@ export const InfoSearch: React.FC = () => {
             </div>
           )}
 
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border-b-8 border-green-200 border-x border-t border-gray-100">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border-b-8 border-green-200 border border-gray-100">
              <div className="flex items-center gap-2 mb-4">
                 <span className="bg-green-100 p-2 rounded-lg text-xl">💡</span>
-                <h3 className="font-black text-green-600 uppercase text-xs tracking-widest">Lo básico</h3>
+                <h3 className="font-black text-green-600 uppercase text-xs tracking-widest">En pocas palabras</h3>
              </div>
              <p className="text-lg text-gray-700 leading-relaxed font-medium">
-                {sections.simple || rawText.replace(/[A-Z_]+:/g, '')}
+                {sections.simple || rawText}
              </p>
           </div>
 
@@ -138,7 +140,7 @@ export const InfoSearch: React.FC = () => {
             <div className="bg-purple-50 p-8 rounded-[2.5rem] border-4 border-dashed border-purple-200">
                <div className="flex items-center gap-2 mb-4">
                   <span className="bg-purple-100 p-2 rounded-lg text-xl">🎨</span>
-                  <h3 className="font-black text-purple-600 uppercase text-xs tracking-widest">Imagínatelo así</h3>
+                  <h3 className="font-black text-purple-600 uppercase text-xs tracking-widest">Como si fuera...</h3>
                </div>
                <p className="text-lg text-purple-900 italic font-black leading-relaxed">"{sections.analogy}"</p>
             </div>

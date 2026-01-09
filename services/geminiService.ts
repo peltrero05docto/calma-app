@@ -1,19 +1,22 @@
 
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 
-// Fix: Renamed to getAIInstance and exported to satisfy requirements in ChatCompanion and ensure fresh API instances
 export const getAIInstance = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const cleanJSON = (text: string) => {
-  return text.replace(/```json/g, "").replace(/```/g, "").trim();
+  // Limpia bloques de código y caracteres extra que la IA pueda añadir
+  return text.replace(/```json/g, "").replace(/```/g, "").replace(/^[^[{]*/, "").replace(/[^\]}]*$/, "").trim();
 };
+
+// Genera un string aleatorio para evitar que la IA repita respuestas por caché de prompt
+const getUniqueContext = () => `[Ref: ${Date.now()}-${Math.random().toString(36).substring(7)}]`;
 
 export const getQuickAffirmation = async (mood: string): Promise<string> => {
   try {
     const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Genera una frase de aliento aleatoria y única (max 8 palabras) para un joven de 14 años que se siente "${mood}". Cambia el mensaje cada vez. Usa tono relax de CDMX.`,
+      contents: `${getUniqueContext()} Genera una frase de aliento corta y única (max 8 palabras) para un joven que se siente "${mood}". Usa lenguaje juvenil de CDMX.`,
     });
     return response.text?.trim() || "¡Tú puedes con todo hoy!";
   } catch (e) { return "Respira hondo, todo estará bien."; }
@@ -24,19 +27,18 @@ export const getSimplifiedExplanation = async (topic: string) => {
     const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Explica "${topic}" para un joven de 14 años de forma divertida. 
-      USA ESTRICTAMENTE ESTE FORMATO:
-      RESUMEN_MAGICO: (una frase loca)
-      EXPLICACION_SIMPLE: (lo más importante)
-      DETALLE_JOVEN: (lenguaje chido)
-      ANALOGIA: (ejemplo visual)`,
+      contents: `${getUniqueContext()} Explica "${topic}" para un joven de 14 años. 
+      Usa exactamente estos marcadores y nada más:
+      RESUMEN_MAGICO: (frase corta)
+      EXPLICACION_SIMPLE: (párrafo claro)
+      DETALLE_JOVEN: (con palabras chidas)
+      ANALOGIA: (comparación visual)`,
     });
     const text = response.text;
-    if (!text) throw new Error("No hay respuesta");
+    if (!text) throw new Error("No response");
     return { content: text, isError: false };
   } catch (e) {
-    console.error("Error en Explícame:", e);
-    return { content: "Ocurrió un error al conectar con Calma. Revisa tu conexión.", isError: true };
+    return { content: "Error al conectar. Intenta de nuevo.", isError: true };
   }
 };
 
@@ -45,7 +47,7 @@ export const createChatSession = () => {
   return ai.chats.create({
     model: 'gemini-3-flash-preview',
     config: {
-      systemInstruction: "Eres 'Calma', un amigo experto en apoyo emocional para jóvenes. Tono chido, empático y breve.",
+      systemInstruction: "Eres 'Calma', un amigo experto en apoyo emocional para jóvenes. Tono chido, empático y breve. No repitas frases.",
     }
   });
 };
@@ -70,7 +72,7 @@ export const getMoodSupport = async (mood: string, name: string): Promise<string
     const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `El usuario ${name} se siente "${mood}". Dale un apoyo muy corto, diferente a los anteriores, usa emojis.`,
+      contents: `${getUniqueContext()} El usuario ${name} se siente "${mood}". Dale un apoyo muy corto y cool.`,
     });
     return response.text?.trim() || "Aquí estoy para acompañarte.";
   } catch (e) { return "Aquí estoy para acompañarte."; }
@@ -79,18 +81,17 @@ export const getMoodSupport = async (mood: string, name: string): Promise<string
 export const getMotivationalQuote = async () => {
   try {
     const ai = getAIInstance();
-    // Añadimos una instrucción de aleatoriedad para evitar que Vercel/Gemini repitan la misma frase
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: "Genera una frase motivadora totalmente nueva y diferente a las comunes (max 7 palabras) y una pista. Responde SOLO JSON: { \"quote\": \"...\", \"hint\": \"...\" }",
+      contents: `${getUniqueContext()} Genera una frase motivadora corta (max 7 palabras) y una pista. Responde SOLO JSON: { "quote": "...", "hint": "..." }`,
       config: { 
         responseMimeType: "application/json",
-        temperature: 0.9 // Más creatividad para evitar repeticiones
+        temperature: 1.0 
       }
     });
     return JSON.parse(cleanJSON(response.text || '{"quote": "Cree en ti.", "hint": "Confianza"}'));
   } catch (e) {
-    return { quote: "Hoy es un buen día.", hint: "Optimismo" };
+    return { quote: "Hoy es un gran día.", hint: "Optimismo" };
   }
 };
 
@@ -99,8 +100,8 @@ export const getReframingScenario = async () => {
     const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: "Un pensamiento negativo escolar aleatorio (max 10 palabras). Sé creativo.",
-      config: { temperature: 0.8 }
+      contents: `${getUniqueContext()} Un pensamiento negativo escolar aleatorio (max 10 palabras).`,
+      config: { temperature: 0.9 }
     });
     return response.text?.trim() || "Siento que no puedo con esto.";
   } catch (e) { return "Es demasiado difícil."; }
@@ -111,7 +112,7 @@ export const evaluateReframing = async (neg: string, pos: string) => {
     const ai = getAIInstance();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Evalúa este cambio: "${neg}" a "${pos}". Responde JSON: { \"score\": 0-10, \"feedback\": \"frase corta\" }`,
+      contents: `Evalúa este cambio: "${neg}" a "${pos}". Responde JSON: { "score": 0-10, "feedback": "frase corta" }`,
       config: { responseMimeType: "application/json" }
     });
     return JSON.parse(cleanJSON(response.text || '{"score": 5, "feedback": "Bien"}'));
@@ -129,7 +130,6 @@ export const getMathFeedback = async (count: number, difficulty: string) => {
   } catch (e) { return "¡Vas por buen camino!"; }
 };
 
-// Fix: Added missing export for editArtImage using the gemini-2.5-flash-image model as per guidelines
 export const editArtImage = async (base64Data: string, prompt: string): Promise<string | null> => {
   try {
     const ai = getAIInstance();
@@ -137,19 +137,11 @@ export const editArtImage = async (base64Data: string, prompt: string): Promise<
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: 'image/png',
-            },
-          },
-          {
-            text: prompt,
-          },
+          { inlineData: { data: base64Data, mimeType: 'image/png' } },
+          { text: prompt },
         ],
       },
     });
-
     const candidate = response.candidates?.[0];
     if (candidate) {
       for (const part of candidate.content.parts) {
@@ -159,8 +151,5 @@ export const editArtImage = async (base64Data: string, prompt: string): Promise<
       }
     }
     return null;
-  } catch (e) {
-    console.error("Error editing image:", e);
-    return null;
-  }
+  } catch (e) { return null; }
 };
